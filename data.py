@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 from os import listdir
 from os.path import isfile, join
@@ -27,7 +28,7 @@ class PlatoData(object):
 
     def _get_entry(self, entry):
         url = '{}{}'.format(self.BASE_URL, entry)
-        entry_filename = '{}/{}'.format(self.DATA_DIR, entry.split('/')[1])
+        entry_filename = '{}/{}.json'.format(self.DATA_DIR, entry.split('/')[1])
         if os.path.isfile(entry_filename):
             return
         response = self._get_page(url)

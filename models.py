@@ -1,8 +1,9 @@
+# -*- coding: utf-8 -*-
+
 import collections
 import random
-from collections import Counter
-
 import math
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -11,62 +12,8 @@ from matplotlib import pylab
 
 from sklearn.manifold import TSNE
 
-from philo2vec.src.utils import time_, get_data
-
-
-class VocabBuilder(object):
-    UNK = '<UNK>'
-
-    def __init__(self, text_steam, size=None, min_frequency=1):
-        if all([size, min_frequency]) or not any([size, min_frequency]):
-            raise ValueError('`size` or `min_size` is required.')
-
-        self.words = self.get_words(text_steam)
-        self.total_count = len(self.words)
-        self.size = size
-        self.min_frequency = min_frequency
-        self.counter = self.count_words()
-        self.word2idx = self.get_word2idx()
-        self.data = self.get_data()
-        # update the UKN count
-        self.counter[0][1] = self.data.count(0)
-        self.idx2word = self.get_idx2word()
-
-    @staticmethod
-    def get_words(text_steam):
-        return [word for line in text_steam for word in line.split()]
-
-    @time_
-    def count_words(self):
-        counter = [[self.UNK, 0]]
-
-        if self.min_frequency:
-            counter.extend([list(item) for item in Counter(self.words).most_common()
-                            if item[1] > self.min_frequency])
-            self.size = len(counter)
-        else:
-            counter.extend(Counter(self.words).most_common(self.size - 1))
-            self.min_frequency = min(counter.values())
-
-        return counter
-
-    @time_
-    def get_word2idx(self):
-        return {word: i for i, (word, _) in enumerate(self.counter)}
-
-    @time_
-    def get_data(self):
-        return [self.word2idx.get(word, 0) for word in self.words]
-
-    @time_
-    def get_idx2word(self):
-        return dict(zip(self.word2idx.values(), self.word2idx.keys()))
-
-    def info(self):
-        print(self.min_frequency, self.size)
-
-    def get_decay(self, min_learning_rate, learning_rate, window):
-        return (min_learning_rate - learning_rate) / (self.total_count * window)
+from preprocessors import VocabBuilder
+from utils import get_data
 
 
 class Philo2Vec(object):
@@ -78,8 +25,8 @@ class Philo2Vec(object):
 
     def __init__(self, vocab_builder, model=SKIP_GRAM, graph=None, session=None,
                  optimizer=tf.train.AdagradOptimizer(1.0),
-                 loss_fct=SOFTMAX, embedding_size=10, neg_sample_size=5,
-                 num_skips=2, context_window=1, batch_size=32, log_dir='./log'):
+                 loss_fct=SOFTMAX, embedding_size=200, neg_sample_size=5,
+                 num_skips=2, context_window=2, batch_size=128, log_dir='./log'):
         tf.reset_default_graph()
         self.graph = graph or tf.Graph()
         self.session = session or tf.Session(graph=self.graph)
@@ -168,7 +115,7 @@ class Philo2Vec(object):
         top_k_nearest = [
             (
                 word, [(similar_i, similar_idxs[i, similar_i])
-                       for similar_i in np.abs(similar_idxs[i, :]).argsort()[1:top_k + 1]]
+                       for similar_i in (1 - similar_idxs[i, :]).argsort()[1:top_k + 1]]
             )
             for i, word in enumerate(word_idxs)]
 
@@ -238,8 +185,8 @@ class Philo2Vec(object):
                    [[self.vocab_builder.idx2word[w] for w in i] for i in X],
                    [self.vocab_builder.idx2word[i] for i in y.reshape(self.batch_size)]))
 
-    def batch_skip_gram(self):
-        data_index = 0
+    def batch_skip_gram(self, step):
+        data_index = step % self.vocab_builder.total_count
         span = 2 * self.context_window + 1  # [ skip_window target skip_window ]
         X = np.ndarray(shape=(self.batch_size,), dtype=np.int32)
         y = np.ndarray(shape=(self.batch_size, 1), dtype=np.int32)
@@ -257,11 +204,10 @@ class Philo2Vec(object):
                 X[i * self.num_skips + j] = buffer[self.context_window]
                 y[i * self.num_skips + j, 0] = buffer[target]
             buffer.append(self.vocab_builder.data[data_index])
-            data_index = (data_index + 1) % len(self.vocab_builder.data)
         return X, y
 
-    def batch_cbow(self):
-        data_index = 0
+    def batch_cbow(self, step):
+        data_index = step % self.vocab_builder.total_count
         span = 2 * self.context_window + 1  # [ bag_window target bag_window ]
         X = np.ndarray(shape=(self.batch_size, span - 1), dtype=np.int32)
         y = np.ndarray(shape=(self.batch_size, 1), dtype=np.int32)
@@ -276,50 +222,54 @@ class Philo2Vec(object):
             X[i] = buffer_list
             # iterate to the next buffer
             buffer.append(self.vocab_builder.data[data_index])
-            data_index = (data_index + 1) % self.vocab_builder.size
         return X, y
 
-    def fit(self, steps, every_n_steps=200, validation_data=None, valid_size=10):
+    def _run_epoch(self, epoch, steps, every_n_steps, validation_data, valid_size):
+        average_loss = 0
+        for step in range(epoch * steps, epoch * steps + steps):
+            X, y = self.batch_cbow(step) if self.model == self.CBOW else self.batch_skip_gram(step)
+            feed_dict = {self.X: X, self.y: y}
+            _, l = self.session.run([self.train, self.loss], feed_dict=feed_dict)
+
+            average_loss += l
+            if step % every_n_steps == 0:
+                summary = self.session.run(self.summaries, feed_dict=feed_dict)
+                self.summary_writer.add_summary(summary, step)
+
+                average_loss /= 2000
+                # The average loss is an estimate of the loss over the last 2000 batches.
+                print('Average loss at step %d: %f' % (step, average_loss))
+                average_loss = 0
+
+                # note that this is expensive (~20% slowdown if computed every 500 steps)
+                if validation_data:
+                    sim = self.session.run([self.similarity])
+                    for i in range(valid_size):
+                        valid_word = self.vocab_builder.idx2word[validation_data[i]]
+
+    def fit(self, steps=None, epochs=15, every_n_steps=1000, validation_data=None, valid_size=10):
+        steps = steps or self.vocab_builder.total_count // self.batch_size
         with self.graph.as_default():
             # prepare validation
             if validation_data:
                 self.set_validation(validation_data)
 
-            average_loss = 0
-            for step in range(1, steps):
-                X, y = self.batch_cbow() if self.model == self.CBOW else self.batch_skip_gram()
-                feed_dict = {self.X: X, self.y: y}
-                _, l = self.session.run([self.train, self.loss], feed_dict=feed_dict)
-
-                average_loss += l
-                if step % every_n_steps == 0:
-                    summary = self.session.run(self.summaries, feed_dict=feed_dict)
-                    self.summary_writer.add_summary(summary, step)
-
-                    average_loss /= 2000
-                    # The average loss is an estimate of the loss over the last 2000 batches.
-                    print('Average loss at step %d: %f' % (step, average_loss))
-                    average_loss = 0
-
-                    # note that this is expensive (~20% slowdown if computed every 500 steps)
-                    if validation_data:
-                        sim = self.session.run([self.similarity])
-                        for i in range(valid_size):
-                            valid_word = self.vocab_builder.idx2word[validation_data[i]]
+            for epoch in range(epochs):
+                print('Epoch {}:'.format(epoch + 1))
+                self._run_epoch(epoch, steps, every_n_steps, validation_data, valid_size)
 
             return self.session.run(self.normalized_embeddings)
 
 
 def main():
     params = {
-        'embedding_size': 100,
         'model': Philo2Vec.CBOW,
-        'optimizer': tf.train.GradientDescentOptimizer(0.01),
         'loss_fct': Philo2Vec.NCE,
-        'context_window': 3
+        'optimizer': tf.train.AdagradOptimizer(1.1),
+        'context_window': 5
     }
     x_train = get_data()
-    vb = VocabBuilder(x_train)
+    vb = VocabBuilder(x_train, min_frequency=3)
     pv = Philo2Vec(vb, **params)
-    pv.fit(10000)
+    pv.fit()
     return pv
