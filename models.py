@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import os
 import collections
 import random
 import math
+import string
 
 import numpy as np
 import pandas as pd
@@ -12,7 +14,7 @@ from matplotlib import pylab
 
 from sklearn.manifold import TSNE
 
-from preprocessors import VocabBuilder
+from preprocessors import VocabBuilder, StemmingLookup
 from utils import get_data
 
 
@@ -23,10 +25,12 @@ class Philo2Vec(object):
     CBOW = 'cbow'
     SKIP_GRAM = 'skip_gram'
 
+    LOGS = './logs'
+
     def __init__(self, vocab_builder, model=SKIP_GRAM, graph=None, session=None,
                  optimizer=tf.train.AdagradOptimizer(1.0),
-                 loss_fct=SOFTMAX, embedding_size=200, neg_sample_size=5,
-                 num_skips=2, context_window=2, batch_size=128, log_dir='./log'):
+                 loss_fct=SOFTMAX, embedding_size=350, neg_sample_size=5,
+                 num_skips=2, context_window=2, batch_size=128, log_dir=None):
         tf.reset_default_graph()
         self.graph = graph or tf.Graph()
         self.session = session or tf.Session(graph=self.graph)
@@ -39,12 +43,21 @@ class Philo2Vec(object):
         self.context_window = context_window
         self.vocab_builder = vocab_builder
         self.batch_size = batch_size
-        self.log_dir = log_dir
+        self.log_dir = self._log_dir(log_dir)
+        self.current_step = 0
 
         self.set_model_graph()
 
         assert batch_size % num_skips == 0
         assert num_skips <= 2 * context_window
+
+    def _log_dir(self, log_dir):
+        log_dir = (
+            log_dir or
+            self.LOGS + '/' + ''.join(random.choice(string.ascii_uppercase) for _ in range(6)))
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        return log_dir
 
     def set_model_graph(self):
         def set_params():
@@ -224,9 +237,11 @@ class Philo2Vec(object):
             buffer.append(self.vocab_builder.data[data_index])
         return X, y
 
-    def _run_epoch(self, epoch, steps, every_n_steps, validation_data, valid_size):
+    def _run_epoch(self, steps, every_n_steps, validation_data):
         average_loss = 0
-        for step in range(epoch * steps, epoch * steps + steps):
+        start_step = self.current_step
+        self.current_step += steps
+        for step in range(start_step, self.current_step):
             X, y = self.batch_cbow(step) if self.model == self.CBOW else self.batch_skip_gram(step)
             feed_dict = {self.X: X, self.y: y}
             _, l = self.session.run([self.train, self.loss], feed_dict=feed_dict)
@@ -241,22 +256,16 @@ class Philo2Vec(object):
                 print('Average loss at step %d: %f' % (step, average_loss))
                 average_loss = 0
 
-                # note that this is expensive (~20% slowdown if computed every 500 steps)
-                if validation_data:
-                    sim = self.session.run([self.similarity])
-                    for i in range(valid_size):
-                        valid_word = self.vocab_builder.idx2word[validation_data[i]]
+        if validation_data:
+            for v in self.get_similar_words(validation_data):
+                print(v)
 
-    def fit(self, steps=None, epochs=15, every_n_steps=1000, validation_data=None, valid_size=10):
+    def fit(self, steps=None, epochs=15, every_n_steps=1000, validation_data=None):
         steps = steps or self.vocab_builder.total_count // self.batch_size
         with self.graph.as_default():
-            # prepare validation
-            if validation_data:
-                self.set_validation(validation_data)
-
-            for epoch in range(epochs):
-                print('Epoch {}:'.format(epoch + 1))
-                self._run_epoch(epoch, steps, every_n_steps, validation_data, valid_size)
+            for epoch in range(1, epochs + 1):
+                print('Epoch {}:'.format(epoch))
+                self._run_epoch(steps, every_n_steps, validation_data)
 
             return self.session.run(self.normalized_embeddings)
 
@@ -265,11 +274,12 @@ def main():
     params = {
         'model': Philo2Vec.CBOW,
         'loss_fct': Philo2Vec.NCE,
-        'optimizer': tf.train.AdagradOptimizer(1.1),
-        'context_window': 5
+        'context_window': 5,
     }
     x_train = get_data()
-    vb = VocabBuilder(x_train, min_frequency=3)
+    validation_words = ['kant', 'descartes', 'human', 'natural']
+    x_validation = [StemmingLookup.stem(w) for w in validation_words]
+    vb = VocabBuilder(x_train, min_frequency=5)
     pv = Philo2Vec(vb, **params)
-    pv.fit()
+    pv.fit(epochs=30, validation_data=x_validation)
     return pv

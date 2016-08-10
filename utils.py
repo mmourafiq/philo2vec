@@ -19,16 +19,16 @@ def time_(function):
 
 
 def get_data():
-    data_dir = 'philo2vec/data/data/'
+    data_dir = './data/data/'
     result = []
     for filename in os.listdir(data_dir):
-        if filename.startswith('.'):
+        if not filename.endswith('.json'):
             continue
 
         with open(data_dir + filename, 'r') as f:
             content = json.loads(f.read())
             content = ' '.join(' '.join([i for i in content if i != 'li']).split('\n'))
-            content = content.encode('ascii', 'ignore')
+            content = str(content.encode('ascii', 'ignore'))
             result += content.split('.')
 
     return result
