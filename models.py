@@ -34,7 +34,7 @@ class Philo2Vec(object):
                     possible values: `SOFTMAX`, `NCE`.
         * embedding_size: dimensionality of word embeddings.
         * neg_sample_size: number of negative samples for each positive sample
-        * num_skips: numer of skips for a `SKIP_GRAM` model.
+        * num_skips: number of times to reuse an input to generate a label for a `SKIP_GRAM` model.
         * context_window: window size, this window is used to create the
                           context for calculating the vector representations
                           [ window target window ].
@@ -75,6 +75,7 @@ class Philo2Vec(object):
 
         assert batch_size % num_skips == 0
         assert num_skips <= 2 * context_window
+        assert self.vocab_builder.size > neg_sample_size
 
     def _log_dir(self, log_dir):
         log_dir = (
@@ -130,7 +131,8 @@ class Philo2Vec(object):
             self.valid_embeddings = tf.nn.embedding_lookup(self.normalized_embeddings,
                                                            self.validate_words)
             self.similarity = tf.matmul(self.valid_embeddings,
-                                        tf.transpose(self.normalized_embeddings))
+                                        self.normalized_embeddings,
+                                        transpose_b=True)
 
         def set_closest_to_vec():
             self.valid_vector = tf.placeholder(tf.float32, shape=[1, self.embedding_size])
@@ -228,14 +230,14 @@ class Philo2Vec(object):
                    [self.vocab_builder.idx2word[i] for i in y.reshape(self.batch_size)]))
 
     def batch_skip_gram(self, step):
-        data_index = step % self.vocab_builder.size
+        data_index = (step * (self.batch_size // self.num_skips)) % self.vocab_builder.total_words
         span = 2 * self.context_window + 1  # [ window target window ]
-        X = np.ndarray(shape=(self.batch_size,), dtype=np.int32)
-        y = np.ndarray(shape=(self.batch_size, 1), dtype=np.int32)
+        X = np.zeros(shape=(self.batch_size,), dtype=np.int32)
+        y = np.zeros(shape=(self.batch_size, 1), dtype=np.int32)
         buffer = collections.deque(maxlen=span)
         for _ in range(span):
             buffer.append(self.vocab_builder.data[data_index])
-            data_index = (data_index + 1) % self.vocab_builder.size
+            data_index = (data_index + 1) % self.vocab_builder.total_words
         for i in range(self.batch_size // self.num_skips):
             target = self.context_window  # target label at the center of the buffer
             targets_to_avoid = [self.context_window]
@@ -246,13 +248,14 @@ class Philo2Vec(object):
                 X[i * self.num_skips + j] = buffer[self.context_window]
                 y[i * self.num_skips + j, 0] = buffer[target]
             buffer.append(self.vocab_builder.data[data_index])
+            data_index = (data_index + 1) % self.vocab_builder.total_words
         return X, y
 
     def batch_cbow(self, step):
-        data_index = step % self.vocab_builder.size
+        data_index = (step * self.batch_size) % self.vocab_builder.total_words
         span = 2 * self.context_window + 1  # [ window target window ]
-        X = np.ndarray(shape=(self.batch_size, span - 1), dtype=np.int32)
-        y = np.ndarray(shape=(self.batch_size, 1), dtype=np.int32)
+        X = np.zeros(shape=(self.batch_size, span - 1), dtype=np.int32)
+        y = np.zeros(shape=(self.batch_size, 1), dtype=np.int32)
         buffer = collections.deque(maxlen=span)
         for _ in range(span):
             buffer.append(self.vocab_builder.data[data_index])
@@ -290,7 +293,7 @@ class Philo2Vec(object):
                 print(v)
 
     def fit(self, steps=None, epochs=15, every_n_steps=1000, validation_data=None):
-        steps = steps or self.vocab_builder.size // self.batch_size
+        steps = steps or self.vocab_builder.total_words // self.batch_size
         with self.graph.as_default():
             for epoch in range(1, epochs + 1):
                 print('Epoch {}:'.format(epoch))
@@ -299,11 +302,28 @@ class Philo2Vec(object):
             return self.session.run(self.normalized_embeddings)
 
 
-def main():
+def cbow():
     params = {
         'model': Philo2Vec.CBOW,
         'loss_fct': Philo2Vec.NCE,
         'context_window': 5,
+    }
+    x_train = get_data()
+    validation_words = ['kant', 'descartes', 'human', 'natural']
+    x_validation = [StemmingLookup.stem(w) for w in validation_words]
+    vb = VocabBuilder(x_train, min_frequency=5)
+    pv = Philo2Vec(vb, **params)
+    pv.fit(epochs=30, validation_data=x_validation)
+    return pv
+
+
+def skip_gram():
+    params = {
+        'model': Philo2Vec.SKIP_GRAM,
+        'loss_fct': Philo2Vec.SOFTMAX,
+        'context_window': 2,
+        'num_skips': 4,
+        'neg_sample_size': 2,
     }
     x_train = get_data()
     validation_words = ['kant', 'descartes', 'human', 'natural']

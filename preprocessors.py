@@ -48,7 +48,7 @@ class VocabBuilder(object):
     The `VocabBuilder` provides mapping from words to indexes.
     Attributes
         * words: A counter containing the words and their frequencies.
-        * total_cout
+        * total_words: total count of the words in the text stream.
         * size: size of the vocabulary.
         * min_frequency: the minimum frequency used to build the counter.
         * word2idx: a dictionary containing the word to index.
@@ -64,6 +64,7 @@ class VocabBuilder(object):
             raise ValueError('`size` or `min_size` is required.')
 
         self.words = self.get_words(text_steam)
+        self.total_words = len(self.words)
         self.size = size
         self.min_frequency = min_frequency
         self.counter = self.count_words()

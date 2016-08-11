@@ -42,9 +42,28 @@ pv.fit(epochs=30, validation_data=x_validation)
 return pv
 ```
 
+```
+params = {
+    'model': Philo2Vec.SKIP_GRAM,
+    'loss_fct': Philo2Vec.SOFTMAX,
+    'context_window': 2,
+    'num_skips': 4,
+    'neg_sample_size': 2,
+}
+x_train = get_data()
+validation_words = ['kant', 'descartes', 'human', 'natural']
+x_validation = [StemmingLookup.stem(w) for w in validation_words]
+vb = VocabBuilder(x_train, min_frequency=5)
+pv = Philo2Vec(vb, **params)
+pv.fit(epochs=30, validation_data=x_validation)
+return pv
+```
+
 
 ### installation
 
 The dependencies used for this module can be easily installed with pip:
 
+```
 > pip install -r requirements.txt
+```
