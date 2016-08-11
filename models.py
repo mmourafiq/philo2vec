@@ -19,6 +19,31 @@ from utils import get_data
 
 
 class Philo2Vec(object):
+    """
+    The algorithm that computes the continuous distributed representations of words,
+    in this case, the words used in the stanford philosophy encyclopedia.
+
+    Attributes
+        * graph: the tensorflow graph.
+        * session: the tensorflow session.
+        * optimizer: an instance of tensorflow `Optimizer`, such as
+                     `GradientDescentOptimizer`, `AdagradOptimizer`, or `MomentumOptimizer`.
+        * model: the model to use to create the vectorized representation,
+                 possible values: `CBOW`, `SKIP_GRAM`.
+        * loss_fct: the loss function used to calculate the error,
+                    possible values: `SOFTMAX`, `NCE`.
+        * embedding_size: dimensionality of word embeddings.
+        * neg_sample_size: number of negative samples for each positive sample
+        * num_skips: numer of skips for a `SKIP_GRAM` model.
+        * context_window: window size, this window is used to create the
+                          context for calculating the vector representations
+                          [ window target window ].
+        * vocab_builder: an instance of the `VocabBuilder` class.
+        * batch_size: the batch size for training.
+        * log_dir: the folder for storing histograms and other data related to the model.
+        * current_step: current step in the training process, this is used
+                        to resume training from the same place.
+    """
     SOFTMAX = 'softmax'
     NCE = 'nce'
 
@@ -60,6 +85,10 @@ class Philo2Vec(object):
         return log_dir
 
     def set_model_graph(self):
+        """
+        Build the graph model and other operations used for calculating similarities
+        and vectors operations.
+        """
         def set_params():
             self.X = (tf.placeholder(tf.int32, shape=[self.batch_size], name='X')
                       if self.model == self.SKIP_GRAM
@@ -199,8 +228,8 @@ class Philo2Vec(object):
                    [self.vocab_builder.idx2word[i] for i in y.reshape(self.batch_size)]))
 
     def batch_skip_gram(self, step):
-        data_index = step % self.vocab_builder.total_count
-        span = 2 * self.context_window + 1  # [ skip_window target skip_window ]
+        data_index = step % self.vocab_builder.size
+        span = 2 * self.context_window + 1  # [ window target window ]
         X = np.ndarray(shape=(self.batch_size,), dtype=np.int32)
         y = np.ndarray(shape=(self.batch_size, 1), dtype=np.int32)
         buffer = collections.deque(maxlen=span)
@@ -220,8 +249,8 @@ class Philo2Vec(object):
         return X, y
 
     def batch_cbow(self, step):
-        data_index = step % self.vocab_builder.total_count
-        span = 2 * self.context_window + 1  # [ bag_window target bag_window ]
+        data_index = step % self.vocab_builder.size
+        span = 2 * self.context_window + 1  # [ window target window ]
         X = np.ndarray(shape=(self.batch_size, span - 1), dtype=np.int32)
         y = np.ndarray(shape=(self.batch_size, 1), dtype=np.int32)
         buffer = collections.deque(maxlen=span)
@@ -261,7 +290,7 @@ class Philo2Vec(object):
                 print(v)
 
     def fit(self, steps=None, epochs=15, every_n_steps=1000, validation_data=None):
-        steps = steps or self.vocab_builder.total_count // self.batch_size
+        steps = steps or self.vocab_builder.size // self.batch_size
         with self.graph.as_default():
             for epoch in range(1, epochs + 1):
                 print('Epoch {}:'.format(epoch))

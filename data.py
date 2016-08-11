@@ -9,6 +9,9 @@ from lxml import html
 
 
 class PlatoData(object):
+    """
+    The `PlatoData` represents n object to crawl the stanford philosophy encyclopedia.
+    """
     BASE_URL = 'http://plato.stanford.edu/'
     USER_AGENT = 'Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.0)'
     DATA_DIR = './data'

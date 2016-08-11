@@ -6,7 +6,9 @@ import time
 
 
 def time_(function):
-
+    """
+    A decorator to time operations.
+    """
     def decorator(*args, **kwargs):
         start = time.time()
         result = function(*args, **kwargs)
@@ -19,6 +21,9 @@ def time_(function):
 
 
 def get_data():
+    """
+    Gets and prepares all data in json files under the `data_dir` directory.
+    """
     data_dir = './data/data/'
     result = []
     for filename in os.listdir(data_dir):
