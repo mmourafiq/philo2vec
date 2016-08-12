@@ -1,7 +1,6 @@
 # philo2vec
 
-A Tensorflow implementation of word2vec applied to [stanford philosophy encyclopedia](http://plato.stanford.edu/)
-The implementation supports both `cbow` and `skip gram`
+A Tensorflow implementation of word2vec applied to [stanford philosophy encyclopedia](http://plato.stanford.edu/), the implementation supports both `cbow` and `skip gram`
 
 for more reference, please have a look at this papers:
  
@@ -9,72 +8,20 @@ for more reference, please have a look at this papers:
  * [word2vec Parameter Learning Explained](http://www-personal.umich.edu/~ronxin/pdf/w2vexp.pdf)
  * [Explained: Deriving Mikolov et al.’s Negative-Sampling Word-Embedding Method](http://arxiv.org/pdf/1402.3722v1.pdf)
 
+After training the model returns some interesting results, see [interesting results part](https://github.com/mouradmourafiq/philo2vec#some-interesting-results)
 
-### The repo contains:
-
-  * an object to crawl data from the philosophy encyclopedia; [PlatoData](https://github.com/mouradmourafiq/philo2vec/blob/master/data.py)
-  * a object to build the vocabulary based on the crawled data; [VocabBuilder](https://github.com/mouradmourafiq/philo2vec/blob/master/preprocessors.py)
-  * the model that computes the continuous distributed representations of words; [Philo2Vec](https://github.com/mouradmourafiq/philo2vec/blob/master/models.py)
-  
-
-### The hyperparams for the VocabBuilder:
-
-  * *min_frequency*: the minimum frequency of the words to be used in the model.
-  * *size*: the size of the data, the model then use the top size most frequenct words.
-
-### The hyperparams of the model:
-   
-  * *optimizer*: an instance of tensorflow `Optimizer`, such as `GradientDescentOptimizer`, `AdagradOptimizer`, or `MomentumOptimizer`.
-  * *model*: the model to use to create the vectorized representation, possible values: `CBOW`, `SKIP_GRAM`.
-  * *loss_fct*: the loss function used to calculate the error, possible values: `SOFTMAX`, `NCE`.
-  * *embedding_size*: dimensionality of word embeddings.
-  * *neg_sample_size*: number of negative samples for each positive sample
-  * *num_skips*: numer of skips for a `SKIP_GRAM` model.
-  * *context_window*:  window size, this window is used to create the context for calculating the vector representations [ window target window ].
-
-
-### Quick usage:
-
-```python
-params = {
-    'model': Philo2Vec.CBOW,
-    'loss_fct': Philo2Vec.NCE,
-    'context_window': 5,
-}
-x_train = get_data()
-validation_words = ['kant', 'descartes', 'human', 'natural']
-x_validation = [StemmingLookup.stem(w) for w in validation_words]
-vb = VocabBuilder(x_train, min_frequency=5)
-pv = Philo2Vec(vb, **params)
-pv.fit(epochs=30, validation_data=x_validation)
-return pv
-```
-
-```python
-params = {
-    'model': Philo2Vec.SKIP_GRAM,
-    'loss_fct': Philo2Vec.SOFTMAX,
-    'context_window': 2,
-    'num_skips': 4,
-    'neg_sample_size': 2,
-}
-x_train = get_data()
-validation_words = ['kant', 'descartes', 'human', 'natural']
-x_validation = [StemmingLookup.stem(w) for w in validation_words]
-vb = VocabBuilder(x_train, min_frequency=5)
-pv = Philo2Vec(vb, **params)
-pv.fit(epochs=30, validation_data=x_validation)
-return pv
-```
-
-
-### Installation
-
-The dependencies used for this module can be easily installed with pip:
+Evaluating `hume - empiricist + rationalist`:
 
 ```
-> pip install -r requirements.txt
+descartes
+malebranche
+spinoza
+hobbes
+herder
 ```
+
+<img width="1000" alt="screen shot 2016-08-12 at 19 19 22" src="https://cloud.githubusercontent.com/assets/1261626/17630893/d81cc96e-60c1-11e6-9826-947f9de43db2.png">
+
 
 ### Some interesting results
 
@@ -203,6 +150,100 @@ rights-oriented
 normative
 ethics
 integrity
+```
+
+
+### The repo contains:
+
+  * an object to crawl data from the philosophy encyclopedia; [PlatoData](https://github.com/mouradmourafiq/philo2vec/blob/master/data.py)
+  * a object to build the vocabulary based on the crawled data; [VocabBuilder](https://github.com/mouradmourafiq/philo2vec/blob/master/preprocessors.py)
+  * the model that computes the continuous distributed representations of words; [Philo2Vec](https://github.com/mouradmourafiq/philo2vec/blob/master/models.py)
+
+
+### Installation
+
+The dependencies used for this module can be easily installed with pip:
+
+```
+> pip install -r requirements.txt
+```
+
+### The params for the VocabBuilder:
+
+  * **min_frequency**: the minimum frequency of the words to be used in the model.
+  * **size**: the size of the data, the model then use the top size most frequenct words.
+
+
+### The hyperparams of the model:
+   
+  * **optimizer**: an instance of tensorflow `Optimizer`, such as `GradientDescentOptimizer`, `AdagradOptimizer`, or `MomentumOptimizer`.
+  * **model**: the model to use to create the vectorized representation, possible values: `CBOW`, `SKIP_GRAM`.
+  * **loss_fct**: the loss function used to calculate the error, possible values: `SOFTMAX`, `NCE`.
+  * **embedding_size**: dimensionality of word embeddings.
+  * **neg_sample_size**: number of negative samples for each positive sample
+  * **num_skips**: numer of skips for a `SKIP_GRAM` model.
+  * **context_window**:  window size, this window is used to create the context for calculating the vector representations [ window target window ].
+
+
+### Quick usage:
+
+```python
+params = {
+    'model': Philo2Vec.CBOW,
+    'loss_fct': Philo2Vec.NCE,
+    'context_window': 5,
+}
+x_train = get_data()
+validation_words = ['kant', 'descartes', 'human', 'natural']
+x_validation = [StemmingLookup.stem(w) for w in validation_words]
+vb = VocabBuilder(x_train, min_frequency=5)
+pv = Philo2Vec(vb, **params)
+pv.fit(epochs=30, validation_data=x_validation)
+```
+
+```python
+params = {
+    'model': Philo2Vec.SKIP_GRAM,
+    'loss_fct': Philo2Vec.SOFTMAX,
+    'context_window': 2,
+    'num_skips': 4,
+    'neg_sample_size': 2,
+}
+x_train = get_data()
+validation_words = ['kant', 'descartes', 'human', 'natural']
+x_validation = [StemmingLookup.stem(w) for w in validation_words]
+vb = VocabBuilder(x_train, min_frequency=5)
+pv = Philo2Vec(vb, **params)
+pv.fit(epochs=30, validation_data=x_validation)
+```
+
+
+### about stemming
+
+Since the words are stemmed as part of the preprocessing, some operation are sometimes necessary
+
+```python
+StemmingLookup.stem('religious')  # returns "religi"
+
+StemmingLookup.original_form('religi')  # returns "religion"
+```
+
+
+### Getting similarities
+
+```python
+pv.get_similar_words(['rationalist', 'empirist'])
+```
+
+### Evaluating operations
+
+```python
+pv.evaluate_operation('moral - rational')
+```
+
+### plotting vectorized words
+```python
+pv.plot(['hume', 'empiricist', 'descart', 'rationalist'])
 ```
 
 ### Training details

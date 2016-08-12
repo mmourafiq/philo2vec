@@ -155,6 +155,11 @@ class Philo2Vec(object):
             set_histograms()
             self.session.run(tf.initialize_all_variables())
 
+    def get_words_embeddings(self, words):
+        word_idxs = [self.vocab_builder.word2idx[word] for word in words]
+        vec_words, = self.session.run([self.valid_embeddings], {self.validate_words: word_idxs})
+        return vec_words
+
     def _similarity(self, word_idxs, similar_idxs, top_k, return_words):
         top_k_nearest = [
             (
@@ -185,8 +190,7 @@ class Philo2Vec(object):
         expression = expression.split()
         words, operations = expression[::-2], expression[1::2]
         # get words vectors
-        word_idxs = [self.vocab_builder.word2idx[word] for word in words]
-        vec_words, = self.session.run([self.valid_embeddings], {self.validate_words: word_idxs})
+        vec_words = self.get_words_embeddings(words)
         # calculate the new word vector
         vec_words = list(vec_words)
         for op in operations:
@@ -197,13 +201,17 @@ class Philo2Vec(object):
         # get the closest words to the new vector
         return self.get_close_to_vec(vec_words.pop())
 
-    def plot(self, embeddings, words, num_points=400):
+    def plot(self, words, num_points=None):
+        if not num_points:
+            num_points = len(words)
+
+        embeddings = self.get_words_embeddings(words)
         tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
         two_d_embeddings = tsne.fit_transform(embeddings[:num_points, :])
 
         assert two_d_embeddings.shape[0] >= len(words), 'More labels than embeddings'
         pylab.figure(figsize=(15, 15))  # in inches
-        for i, label in enumerate(words):
+        for i, label in enumerate(words[:num_points]):
             x, y = two_d_embeddings[i, :]
             pylab.scatter(x, y)
             pylab.annotate(label, xy=(x, y), xytext=(5, 2), textcoords='offset points',
